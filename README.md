@@ -1,32 +1,60 @@
-# template ts
-![tests](https://github.com/bicycle-codes/util/actions/workflows/nodejs.yml/badge.svg)
-[![types](https://img.shields.io/npm/types/@bicycle-codes/util?style=flat-square)](README.md)
-[![dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg?style=flat-square)](package.json)
+# hyperstream
+![tests](https://github.com/bicycle-codes/crypto-util/actions/workflows/nodejs.yml/badge.svg)
+[![types](https://img.shields.io/npm/types/@substrate-system/icons?style=flat-square)](README.md)
+[![module](https://img.shields.io/badge/module-ESM%2FCJS-blue?style=flat-square)](README.md)
 [![semantic versioning](https://img.shields.io/badge/semver-2.0.0-blue?logo=semver&style=flat-square)](https://semver.org/)
-[![license](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE)
+[![Common Changelog](https://nichoth.github.io/badge/common-changelog.svg)](./CHANGELOG.md)
+[![install size](https://flat.badgen.net/packagephobia/install/@substrate-system/hyperstream)](https://packagephobia.com/result?p=@substrate-system/hyperstream)
+[![dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg?style=flat-square)](package.json)
+[![license](https://img.shields.io/badge/license-Polyform_Non_Commercial-26bc71?style=flat-square)](LICENSE)
 
-A template for typescript *dependency* modules that run in node. See [template-ts-browser](https://github.com/nichoth/template-ts-browser) for the same thing but targeting a browser environment.
 
->
-> [!IMPORTANT]  
-> This builds to **ESM only**.
->
+Stream html into html at a css selector.
 
-## use
+A re-implementation of the classic [@substack module](https://www.npmjs.com/package/hyperstream).
 
-1. Use the template button in github. Or clone this then `rm -rf .git && git init`.
-2. `npm i && npm init`.
-3. Edit `README.md` -- change the CI badge URL + rewrite docs
-5. Edit the source code in `src/index.ts`, edit tests in `test`
+<details><summary><h2>Contents</h2></summary>
+<!-- toc -->
+</details>
 
-## featuring
+## Install
 
-* compile the source to both ESM and CJS format, and put compiled files in `dist`.
-* ignore `dist` and `*.js` in git, but don't ignore them in npm. That way we don't commit any compiled code to git, but it is available to consumers.
-* use npm's `prepublishOnly` hook to compile the code before publishing to npm.
-* use `exports` field in `package.json` to make sure the right format is used by consumers.
-* `preversion` npm hook -- lint via `standardx`.
-* `postversion` npm hook -- `git push && git push --tags && npm publish`
-* eslint via [standardx](https://www.npmjs.com/package/standardx) -- `npm run lint`
-* compile tests and run in a node environment
-* CI via github actions
+```sh
+npm i -S @substrate-system/hyperstream
+```
+
+## Modules
+This exposes ESM and common JS via [package.json `exports` field](https://nodejs.org/api/packages.html#exports). If you are using a bundler, then just import/require
+as normal.
+
+### ESM
+
+```js
+import { hyperstream } from '@substrate-system/hyperstream'
+```
+
+### Common JS
+```js
+const hyperstream = require('@substrate-system/hyperstream')
+```
+
+### pre-built JS
+This package exposes minified JS files too. Copy them to a location that is
+accessible to your web server, then link to them in HTML.
+
+#### copy
+```sh
+cp ./node_modules/@substrate-system/hyperstream/dist/index.min.js ./public/hyperstream.min.js
+```
+
+#### HTML
+```html
+<script type="module" src="./hyperstream.min.js"></script>
+```
+
+## Example
+
+```js
+import { hyperstream } from '@substrate-system/hyperstream'
+
+```
