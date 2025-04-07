@@ -1,93 +1,103 @@
 import { Duplex, Readable, Writable } from 'node:stream'
-// const Duplex = require('readable-stream').Duplex
-// const Readable = require('readable-stream').Readable
-// const Writable = require('readable-stream').Writable
 
-export const wrap = function (elem) {
-    const welem = {}
+interface WrappedElement {
+    name: string;
+    getAttribute(key: string, cb?: (value: string | null) => void): string | null;
+    getAttributes(cb?: (attrs: Record<string, string>) => void): Record<string, string>;
+    setAttribute(key: string, value: string): void;
+    removeAttribute(key: string): void;
+    createReadStream(opts?: { outer?: boolean }): Readable;
+    createWriteStream(opts?: { outer?: boolean }): Writable;
+    createStream(opts?: { outer?: boolean }): Duplex;
+}
 
-    welem.name = elem.name
+export const wrap = (elem: {
+    name: string;
+    getAttribute: (key: string) => string | null;
+    getAttributes: () => Record<string, string>;
+    setAttribute: (key: string, value: string) => void;
+    removeAttribute: (key: string) => void;
+    createReadStream: (opts: { inner: boolean }) => Readable;
+    createWriteStream: (opts: { inner: boolean }) => Writable;
+    createStream: (opts: { inner: boolean }) => Duplex;
+}): WrappedElement => {
+    const welem: WrappedElement = {
+        name: elem.name,
 
-    welem.getAttribute = function (key, cb) {
-        const value = elem.getAttribute(String(key).toLowerCase())
-        if (cb) cb(value)
-        return value
-    }
+        getAttribute (key, cb) {
+            const value = elem.getAttribute(key.toLowerCase())
+            if (cb) cb(value)
+            return value
+        },
 
-    welem.getAttributes = function (cb) {
-        const attrs = elem.getAttributes()
-        if (cb) cb(attrs)
-        return attrs
-    }
+        getAttributes (cb) {
+            const attrs = elem.getAttributes()
+            if (cb) cb(attrs)
+            return attrs
+        },
 
-    welem.setAttribute = function (key, value) {
-        elem.setAttribute(key, value)
-    }
+        setAttribute (key, value) {
+            elem.setAttribute(key, value)
+        },
 
-    welem.removeAttribute = function (key) {
-        elem.removeAttribute(key)
-    }
+        removeAttribute (key) {
+            elem.removeAttribute(key)
+        },
 
-    welem.createReadStream = function (opts) {
-        if (!opts) opts = {}
-
-        const rs = elem.createReadStream({ inner: !opts.outer })
-        const r = new Readable()
-        r._read = function read () {
-            let row; let reads = 0
-            while ((row = rs.read()) !== null) {
-                if (row[1].length) {
-                    r.push(row[1])
-                    reads++
+        createReadStream (opts = {}) {
+            const rs = elem.createReadStream({ inner: !opts.outer })
+            const r = new Readable({
+                read () {
+                    let row
+                    let reads = 0
+                    while ((row = rs.read()) !== null) {
+                        if (row[1].length) {
+                            this.push(row[1])
+                            reads++
+                        }
+                    }
+                    if (reads === 0) rs.once('readable', this.read.bind(this))
                 }
-            }
-            if (reads === 0) rs.once('readable', read)
-        }
-        rs.on('end', function () { r.push(null) })
+            })
+            rs.on('end', () => r.push(null))
+            return r
+        },
 
-        return r
-    }
-
-    welem.createWriteStream = function (opts) {
-        if (!opts) opts = {}
-
-        const ws = elem.createWriteStream({ inner: !opts.outer })
-        const w = new Writable()
-        w._write = function (buf, enc, next) {
-            ws.write(['data', buf])
-            next()
-        }
-        w.on('finish', function () { ws.end() })
-
-        return w
-    }
-
-    welem.createStream = function (opts) {
-        if (!opts) opts = {}
-
-        const d = new Duplex()
-        const s = elem.createStream({ inner: !opts.outer })
-
-        d._write = function (buf, enc, next) {
-            s.write(['data', buf])
-            next()
-        }
-
-        d._read = function read () {
-            let row; let reads = 0
-            while ((row = s.read()) !== null) {
-                if (row[1].length) {
-                    d.push(row[1])
-                    reads++
+        createWriteStream (opts = {}) {
+            const ws = elem.createWriteStream({ inner: !opts.outer })
+            const w = new Writable({
+                write (buf, _enc, next) {
+                    ws.write(['data', buf])
+                    next()
                 }
-            }
-            if (reads === 0) s.once('readable', read)
+            })
+            w.on('finish', () => ws.end())
+            return w
+        },
+
+        createStream (opts = {}) {
+            const s = elem.createStream({ inner: !opts.outer })
+            const d = new Duplex({
+                write (buf, _enc, next) {
+                    s.write(['data', buf])
+                    next()
+                },
+                read () {
+                    let row
+                    let reads = 0
+                    while ((row = s.read()) !== null) {
+                        if (row[1].length) {
+                            this.push(row[1])
+                            reads++
+                        }
+                    }
+                    if (reads === 0) s.once('readable', this.read.bind(this))
+                }
+            })
+            d.on('finish', () => s.end())
+            s.on('end', () => d.push(null))
+            return d
         }
-
-        d.on('finish', function () { s.end() })
-        s.on('end', function () { d.push(null) })
-
-        return d
     }
 
     return welem
