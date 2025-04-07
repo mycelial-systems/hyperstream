@@ -1,202 +1,152 @@
 import { wrap as wrapElem } from './wrap.js'
 import { Tokenize } from './tokenize.js'
-import { Duplex } from 'node:stream'
+import { Duplex, Readable, Writable } from 'node:stream'
+import { select } from './html-select.js'
 
-// const through = require('through2')
-// const duplexer = require('duplexer2')
-// const tokenize = require('html-tokenize')
-// const select = require('html-select')
+interface SelectResult {
+    getAttribute(key: string, cb?: (value: string | null) => void): this;
+    getAttributes(cb: (attrs: Record<string, string>) => void): this;
+    setAttribute(key: string, value: string): this;
+    removeAttribute(key: string): this;
+    createReadStream(opts?: { outer?: boolean }): Readable;
+    createWriteStream(opts?: { outer?: boolean }): Writable;
+    createStream(opts?: { outer?: boolean }): Duplex;
+}
 
 /**
- * Parse and transform streaming html using css selectors.
+ * Parse and transform streaming HTML using CSS selectors.
  */
 export class Trumpet extends Duplex {
-    private _tokenize
-    _writing = false
-    _piping = false
-    _select
+    private _tokenize: Tokenize
+    private _writing: boolean
+    private _piping: boolean
+    private _select: any
 
     constructor () {
         super()
         this._tokenize = new Tokenize()
+        this._writing = false
+        this._piping = false
         this._select = this._tokenize.pipe(select())
     }
-}
 
-function oldTrumpet () {
-    const self = this
-    if (!(this instanceof Trumpet)) return new Trumpet()
-    Duplex.call(this)
-    this._tokenize = tokenize()
-    this._writing = false
-    this._piping = false
-    this._select = this._tokenize.pipe(select())
-    this._select.once('end', function () {
-        self.emit('_end')
-        self.push(null)
-    })
-    this.once('finish', function () { self._tokenize.end() })
-}
-
-oldTrumpet.prototype.pipe = function () {
-    this._piping = true
-    return Duplex.prototype.pipe.apply(this, arguments)
-}
-
-oldTrumpet.prototype._read = function (n) {
-    let row
-    const self = this
-    let buf; let read = 0
-    const s = this._select
-    while ((row = s.read()) !== null) {
-        if (row[0] === 'END') {
-            this.push(row[1][1])
-            read++
-        } else if (row[1] && row[1].length) {
-            this.push(row[1])
-            read++
+    override _read (_size: number): void {
+        let row
+        let reads = 0
+        while ((row = this._select.read()) !== null) {
+            if (row[0] === 'END') {
+                this.push(row[1][1])
+                reads++
+            } else if (row[1] && row[1].length) {
+                this.push(row[1])
+                reads++
+            }
+        }
+        if (reads === 0) {
+            this._select.once('readable', () => this._read(_size))
         }
     }
-    if (read === 0) s.once('readable', function () { self._read(n) })
-}
 
-oldTrumpet.prototype._write = function (buf, enc, next) {
-    if (!this._writing && !this._piping) {
-        this._piping = true
-        this.resume()
+    override _write (chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+        if (!this._writing && !this._piping) {
+            this._piping = true
+            this.resume()
+        }
+        this._tokenize._write(chunk, _encoding, callback)
     }
-    return this._tokenize._write(buf, enc, next)
-}
 
-oldTrumpet.prototype.select = function (str, cb) {
-    const self = this
-    let first = true
+    select (selector: string, cb?: (elem: SelectResult) => void): SelectResult {
+        return this._selectAll(selector, cb, true)
+    }
 
-    var res = self._selectAll(str, function (elem) {
-        if (!first) return
-        first = false
-        res.createReadStream = function () {}
-        res.createWriteStream = function () {}
-        res.createStream = function () {}
-        if (cb) cb(elem)
-    })
-    return res
-}
+    selectAll (selector: string, cb: (elem: SelectResult) => void): SelectResult {
+        return this._selectAll(selector, cb, false)
+    }
 
-oldTrumpet.prototype.selectAll = function (str, cb) {
-    return this._selectAll(str, cb)
-}
+    private _selectAll (selector: string, cb?: (elem: SelectResult) => void, firstOnly = false): SelectResult {
+        const readers: Readable[] = []
+        const writers: Writable[] = []
+        const duplexes: { input: Writable; output: Readable; options?: { outer?: boolean } }[] = []
+        const gets: [string, (value: string | null) => void][] = []
+        const getss: ((attrs: Record<string, string>) => void)[] = []
+        const sets: [string, string][] = []
+        const removes: string[] = []
 
-oldTrumpet.prototype._selectAll = function (str, cb) {
-    const self = this
-    const readers = []; const writers = []; const duplex = []
-    const gets = []; const getss = []; const sets = []; const removes = []
+        let element: any = null
+        let welem: SelectResult | null = null
 
-    this.once('_end', function () {
-        readers.splice(0).forEach(function (r) {
-            r.end()
-            r.resume()
+        this._select.select(selector, (elem: any) => {
+            if (firstOnly && welem) return
+
+            element = elem
+            welem = wrapElem(elem)
+
+            if (cb) cb(welem)
+
+            elem.once('close', () => {
+                element = null
+                welem = null
+            })
+
+            readers.splice(0).forEach((r) => welem!.createReadStream(r._options).pipe(r))
+            writers.splice(0).forEach((w) => w.pipe(welem!.createWriteStream(w._options)))
+            duplexes.splice(0).forEach((d) => d.input.pipe(welem!.createStream(d.options)).pipe(d.output))
+            gets.splice(0).forEach(([key, callback]) => welem!.getAttribute(key, callback))
+            getss.splice(0).forEach((callback) => welem!.getAttributes(callback))
+            sets.splice(0).forEach(([key, value]) => welem!.setAttribute(key, value))
+            removes.splice(0).forEach((key) => welem!.removeAttribute(key))
         })
 
-        duplex.splice(0).forEach(function (d) {
-            d.input.end()
-            d.input.resume()
-        })
-    })
-
-    let element, welem
-    this._select.select(str, function (elem) {
-        element = elem
-        welem = wrapElem(elem)
-        if (cb) cb(welem)
-
-        elem.once('close', function () {
-            element = null
-            welem = null
-        })
-
-        readers.splice(0).forEach(function (r) {
-            welem.createReadStream(r._options).pipe(r)
-        })
-
-        writers.splice(0).forEach(function (w) {
-            w.pipe(welem.createWriteStream(w._options))
-        })
-
-        duplex.splice(0).forEach(function (d) {
-            d.input.pipe(welem.createStream(d.options))
-                .pipe(d.output)
-        })
-
-        gets.splice(0).forEach(function (g) {
-            welem.getAttribute(g[0], g[1])
-        })
-
-        getss.splice(0).forEach(function (cb) {
-            welem.getAttributes(cb)
-        })
-
-        sets.splice(0).forEach(function (g) {
-            welem.setAttribute(g[0], g[1])
-        })
-
-        removes.splice(0).forEach(function (key) {
-            welem.removeAttribute(key)
-        })
-    })
-
-    return {
-        getAttribute: function (key, cb) {
-            if (welem) return welem.getAttribute(key, cb)
-            gets.push([key, cb])
-            return this
-        },
-        getAttributes: function (cb) {
-            getss.push(cb)
-            return this
-        },
-        setAttribute: function (key, value) {
-            if (welem) return welem.setAttribute(key, value)
-            sets.push([key, value])
-            return this
-        },
-        removeAttribute: function (key) {
-            if (welem) return welem.removeAttribute(key)
-            removes.push(key)
-            return this
-        },
-        createReadStream: function (opts) {
-            if (welem) return welem.createReadStream(opts)
-            const r = through()
-            r._options = opts
-            readers.push(r)
-            return r
-        },
-        createWriteStream: function (opts) {
-            if (welem) return welem.createWriteStream(opts)
-            const w = through()
-            w._options = opts
-            writers.push(w)
-            return w
-        },
-        createStream: function (opts) {
-            if (welem) return welem.createStream(opts)
-            const d = { input: through(), output: through() }
-            d.options = opts
-            duplex.push(d)
-            return duplexer(d.input, d.output)
+        return {
+            getAttribute (key, cb) {
+                if (welem) return welem.getAttribute(key, cb)
+                gets.push([key, cb!])
+                return this
+            },
+            getAttributes (cb) {
+                if (welem) return welem.getAttributes(cb)
+                getss.push(cb)
+                return this
+            },
+            setAttribute (key, value) {
+                if (welem) return welem.setAttribute(key, value)
+                sets.push([key, value])
+                return this
+            },
+            removeAttribute (key) {
+                if (welem) return welem.removeAttribute(key)
+                removes.push(key)
+                return this
+            },
+            createReadStream (opts) {
+                if (welem) return welem.createReadStream(opts)
+                const r = new Readable({ read () {} });
+                (r as any)._options = opts
+                readers.push(r)
+                return r
+            },
+            createWriteStream (opts) {
+                if (welem) return welem.createWriteStream(opts)
+                const w = new Writable({ write (_chunk, _enc, next) { next() } });
+                (w as any)._options = opts
+                writers.push(w)
+                return w
+            },
+            createStream (opts) {
+                if (welem) return welem.createStream(opts)
+                const input = new Writable({ write (_chunk, _enc, next) { next() } })
+                const output = new Readable({ read () {} })
+                duplexes.push({ input, output, options: opts })
+                return new Duplex({
+                    write (chunk, enc, next) {
+                        input.write(chunk, enc, next)
+                    },
+                    read () {
+                        const chunk = output.read()
+                        if (chunk) this.push(chunk)
+                    }
+                })
+            }
         }
     }
-}
-
-oldTrumpet.prototype.createReadStream = function (sel, opts) {
-    return this.select(sel).createReadStream(opts)
-}
-
-oldTrumpet.prototype.createWriteStream = function (sel, opts) {
-    return this.select(sel).createWriteStream(opts)
-}
-
-oldTrumpet.prototype.createStream = function (sel, opts) {
-    return this.select(sel).createStream(opts)
 }
