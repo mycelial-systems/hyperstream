@@ -2,7 +2,7 @@ import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
 import concat from 'concat-stream'
 import through from 'through2'
-import ent from 'ent'
+import ent from '../src/ent/index.js'
 
 test('string _text', function (t) {
     t.plan(1)

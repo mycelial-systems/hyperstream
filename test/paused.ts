@@ -3,7 +3,9 @@ import through from 'through'
 import hyperstream from '../src/index.js'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(path.join(__dirname, 'none', 'index.html'), 'utf8')
 
 test('paused output', function (t) {

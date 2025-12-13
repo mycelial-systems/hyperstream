@@ -1,7 +1,7 @@
 import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
 import concat from 'concat-stream'
-import ent from 'ent'
+import ent from '../src/ent/index.js'
 
 test('prepend implicit text', function (t) {
     t.plan(1)

@@ -12,15 +12,12 @@
   ],
   "exports": {
     ".": "./dist/index.js",
-    "./*": [
-      "./dist/*.js",
-      "./dist/*"
-    ]
+    "./*": "./dist/*.js"
   },
   "scripts": {
     "lint": "eslint \"./**/*.{ts,js}\"",
-    "test": "npm run build && esbuild test/index.ts --platform=node --format=esm --keep-names --bundle | node --input-type=module | tap-spec",
-    "build-esm": "esbuild src/*.ts --format=esm --metafile=dist/meta.json --keep-names --tsconfig=tsconfig.build.json --outdir=./dist --sourcemap && tsc --emitDeclarationOnly --project tsconfig.build.json --outDir dist",
+    "test": "cd test && esbuild --format=esm --bundle --platform=node --packages=external index.ts | node --input-type=module",
+    "build-esm": "esbuild src/**/*.ts --format=esm --metafile=dist/meta.json --keep-names --tsconfig=tsconfig.build.json --outdir=./dist --outbase=src --sourcemap && tsc --emitDeclarationOnly --project tsconfig.build.json --outDir dist",
     "build": "mkdir -p ./dist && rm -rf ./dist/* && npm run build-esm",
     "preversion": "npm run lint",
     "version": "auto-changelog -p --template keepachangelog --breaking-pattern 'BREAKING CHANGE:' && git add CHANGELOG.md",
@@ -29,26 +26,27 @@
   },
   "dependencies": {
     "concat-stream": "^2.0.0",
-    "css-select": "^5.1.0",
-    "ent": "^2.2.2",
+    "css-select": "^6.0.0",
+    "domhandler": "^5.0.3",
+    "htmlparser2": "^10.0.0",
     "stream-splicer": "^2.0.1",
-    "tap": "^21.1.0",
     "through": "^2.3.8",
     "through2": "^4.0.2",
     "void-elements": "^3.1.0"
   },
   "devDependencies": {
-    "@substrate-system/debug": "^0.7.18",
-    "@substrate-system/tapzero": "^0.10.15",
+    "@substrate-system/debug": "^0.9.32",
+    "@substrate-system/tapout": "^0.0.30",
+    "@substrate-system/tapzero": "^0.10.16",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "auto-changelog": "^2.4.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.25.12",
     "eslint": "^8.57.0",
     "eslint-config-standard": "^17.1.0",
-    "hyperstream": "^1.2.2",
     "tap-spec": "^5.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.2"
   },
   "author": "nichoth <nichoth@gmail.com> (https://nichoth.com)",

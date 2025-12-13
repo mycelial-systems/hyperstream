@@ -3,7 +3,7 @@ import concat from 'concat-stream'
 import http from 'http'
 import through from 'through'
 import hyperstream from '../src/index.js'
-import hyperquest from 'hyperquest'
+import hyperquest from '../src/hyperquest.js'
 
 test('queue an empty string to an http response', function (t) {
     t.plan(1)
@@ -18,6 +18,7 @@ test('queue an empty string to an http response', function (t) {
             const hq = hyperquest('http://localhost:' + port)
             hq.pipe(concat(function (src) {
                 t.equal(String(src), '<div class="a">xyz</div>')
+                server.close()
             }))
         }
     })

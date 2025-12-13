@@ -1,8 +1,11 @@
 import { test } from '@substrate-system/tapzero'
-const through = require('through')
-const hyperstream = require('../')
+import through from 'through'
+import hyperstream from '../src/index.js'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
-const fs = require('fs')
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(__dirname + '/string/expected.html', 'utf8')
 
 test('glue html streams from disk', function (t) {

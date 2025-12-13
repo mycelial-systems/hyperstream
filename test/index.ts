@@ -1,5 +1,16 @@
-import { test } from '@substrate-system/tapzero'
-
-test('example', async t => {
-    t.ok('ok', 'should be an example')
-})
+import './append.js'
+import './append_prop.js'
+import './attributes.js'
+import './az.js'
+import './az_multi.js'
+import './empty_string.js'
+import './hs.js'
+import './html.js'
+import './none.js'
+import './null.js'
+import './num.js'
+import './paused.js'
+import './prepend.js'
+import './string.js'
+import './string_stream.js'
+import './text.js'

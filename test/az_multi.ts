@@ -4,7 +4,9 @@ import through from 'through'
 import concat from 'concat-stream'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(path.join(__dirname, 'az_multi', 'expected.html'), 'utf8')
 
 test('fs stream and a slow stream', function (t) {

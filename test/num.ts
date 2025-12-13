@@ -3,8 +3,11 @@ import through from 'through'
 import hyperstream from '../src/index.js'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
 
-const expected = fs.readFileSync(path.join(__dirname, 'num', 'expected.html'), 'utf8')
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const filepath = path.join(__dirname, 'num', 'expected.html')
+const expected = fs.readFileSync(filepath, 'utf8')
 
 test('num', function (t) {
     t.plan(1)
@@ -13,7 +16,7 @@ test('num', function (t) {
         '#a': '5',
         '#b': '6',
         '#c': { n: 123 },
-        '#c span': function (html) { return html.length }
+        '#c span': function (html) { return '' + html.length }
     })
     const rs = fs.createReadStream(path.join(__dirname, 'num', 'index.html'))
 

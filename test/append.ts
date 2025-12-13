@@ -1,7 +1,7 @@
 import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
 import concat from 'concat-stream'
-import ent from 'ent'
+import ent from '../src/ent/index.js'
 
 test('append implicit text', function (t) {
     t.plan(1)
@@ -12,7 +12,8 @@ test('append implicit text', function (t) {
     hs.pipe(concat(function (body) {
         t.equal(
             body.toString('utf8'),
-            '<div class="row">so ' + ent.encode('<b>wow</b>') + '</div>'
+            '<div class="row">so ' + ent.encode('<b>wow</b>') + '</div>',
+            'implicit text should exist'
         )
     }))
     hs.end('<div class="row">so </div>')

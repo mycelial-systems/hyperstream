@@ -9,3 +9,5 @@ dist
 
 .cursor
 .repomix-output.txt
+.claude
+test-dist
