@@ -1,40 +1,21 @@
 import { test } from '@substrate-system/tapzero'
 import hyperstream from '../src/index.js'
-import through from 'through'
-import concat from 'concat-stream'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
+import { createAzStream, fileToStream, processFile } from './helpers.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(path.join(__dirname, 'az_multi', 'expected.html'), 'utf8')
 
-test('fs stream and a slow stream', function (t) {
-    t.plan(1)
-
+test('fs stream and a slow stream', async function (t) {
     const hs = hyperstream({
         '#a': createAzStream(),
-        '#b': fs.createReadStream(path.join(__dirname, 'az_multi', 'b.html')),
+        '#b': fileToStream(path.join(__dirname, 'az_multi', 'b.html')),
         '#c': createAzStream(),
-        '#d': fs.createReadStream(path.join(__dirname, 'az_multi', 'd.html'))
+        '#d': fileToStream(path.join(__dirname, 'az_multi', 'd.html'))
     })
-    hs.pipe(concat(function (src) {
-        t.equal(src.toString('utf8'), expected)
-    }))
 
-    const rs = fs.createReadStream(path.join(__dirname, 'az_multi', 'index.html'))
-    rs.pipe(hs)
+    const result = await processFile(hs, path.join(__dirname, 'az_multi', 'index.html'))
+    t.equal(result, expected)
 })
-
-function createAzStream () {
-    const rs = through()
-    let ix = 0
-    const iv = setInterval(function () {
-        rs.queue(String.fromCharCode(97 + ix))
-        if (++ix === 26) {
-            clearInterval(iv)
-            rs.queue(null)
-        }
-    }, 25)
-    return rs
-}

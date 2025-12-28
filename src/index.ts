@@ -1,25 +1,23 @@
-import { Transform } from 'node:stream'
-import type { TransformCallback, Readable } from 'node:stream'
 import { selectAll } from 'css-select'
 import { parseDocument } from 'htmlparser2'
 import type { Element } from 'domhandler'
-import { Tokenize } from './tokenize.js'
+import { createTokenizer, type Token } from './tokenize.js'
 import { encode as entEncode } from './ent/index.js'
 
-type StreamValue = Readable & { pipe:(...args: unknown[]) => unknown }
-type TransformFn = (html:string) => string
-type AttrModifier = { append?:string; prepend?:string }
+type StreamValue = ReadableStream<Uint8Array>
+type TransformFn = (html: string) => string
+type AttrModifier = { append?: string; prepend?: string }
 
 type PropertyValue =
     | string
-    | Buffer
+    | Uint8Array
     | number
     | StreamValue
     | AttrModifier
 
 type SelectorValue =
     | string
-    | Buffer
+    | Uint8Array
     | number
     | null
     | StreamValue
@@ -31,44 +29,67 @@ interface HyperstreamConfig {
 }
 
 interface MatchedElement {
-    selector:string
-    value:SelectorValue
-    depth:number
-    openTag:Buffer
-    content:Array<Buffer|Promise<Buffer>>
-    closeTag:Buffer|null
-    firstOnly:boolean
+    selector: string
+    value: SelectorValue
+    depth: number
+    openTag: Uint8Array
+    content: Array<Uint8Array | Promise<Uint8Array>>
+    closeTag: Uint8Array | null
+    firstOnly: boolean
 }
 
-function isStream (s:unknown):s is StreamValue {
-    return (s !== null &&
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+function concatUint8Arrays (arrays: Uint8Array[]): Uint8Array {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0)
+    const result = new Uint8Array(totalLength)
+    let offset = 0
+    for (const arr of arrays) {
+        result.set(arr, offset)
+        offset += arr.length
+    }
+    return result
+}
+
+function isStream (s: unknown): s is StreamValue {
+    return (
+        s !== null &&
         typeof s === 'object' &&
-        typeof (s as any).pipe === 'function')
+        typeof (s as ReadableStream).getReader === 'function'
+    )
 }
 
-function isObj (o:unknown):o is Record<string, unknown> {
-    return (typeof o === 'object' &&
+function isObj (o: unknown): o is Record<string, unknown> {
+    return (
+        typeof o === 'object' &&
         o !== null &&
-        !Buffer.isBuffer(o) &&
+        !(o instanceof Uint8Array) &&
         !isStream(o)
     )
 }
 
-function toStr (s:unknown):string {
-    if (Buffer.isBuffer(s)) return s.toString('utf8')
+function toStr (s: unknown): string {
+    if (s instanceof Uint8Array) return decoder.decode(s)
     if (typeof s === 'string') return s
     return String(s)
 }
 
-function parseTagAttrs (tagBuf:Buffer):Record<string, string> {
-    const tag = tagBuf.toString('utf8')
-    const attrs:Record<string, string> = {}
-    const attrRegex = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
-    let match:RegExpExecArray | null
+function toBytes (s: unknown): Uint8Array {
+    if (s instanceof Uint8Array) return s
+    if (typeof s === 'string') return encoder.encode(s)
+    return encoder.encode(String(s))
+}
 
-    const tagMatch = tag.match(/^<\/?([a-zA-Z][-a-zA-Z0-9]*)/)
+function parseTagAttrs (tag: Uint8Array): Record<string, string> {
+    const tagStr = decoder.decode(tag)
+    const attrs: Record<string, string> = {}
+    const attrRegex = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
+    let match: RegExpExecArray | null
+
+    const tagMatch = tagStr.match(/^<\/?([a-zA-Z][-a-zA-Z0-9]*)/)
     const startIndex = tagMatch ? tagMatch[0].length : 1
-    const attrPart = tag.slice(startIndex)
+    const attrPart = tagStr.slice(startIndex)
 
     while ((match = attrRegex.exec(attrPart)) !== null) {
         const name = match[1].toLowerCase()
@@ -80,15 +101,15 @@ function parseTagAttrs (tagBuf:Buffer):Record<string, string> {
 }
 
 function rebuildTag (
-    tagBuf:Buffer,
-    attrChanges:Record<string, string | null>
-):Buffer {
-    const tag = tagBuf.toString('utf8')
-    const tagMatch = tag.match(/^<([a-zA-Z][-a-zA-Z0-9]*)/)
-    if (!tagMatch) return tagBuf
+    tag: Uint8Array,
+    attrChanges: Record<string, string | null>
+): Uint8Array {
+    const tagStr = decoder.decode(tag)
+    const tagMatch = tagStr.match(/^<([a-zA-Z][-a-zA-Z0-9]*)/)
+    if (!tagMatch) return tag
 
     const tagName = tagMatch[1]
-    const existingAttrs = parseTagAttrs(tagBuf)
+    const existingAttrs = parseTagAttrs(tag)
 
     for (const [key, value] of Object.entries(attrChanges)) {
         if (value === null) {
@@ -98,25 +119,25 @@ function rebuildTag (
         }
     }
 
-    const selfClosing = tag.trimEnd().endsWith('/>')
+    const selfClosing = tagStr.trimEnd().endsWith('/>')
     let result = '<' + tagName
     for (const [key, value] of Object.entries(existingAttrs)) {
         result += ` ${key}="${value.replace(/"/g, '&quot;')}"`
     }
     result += selfClosing ? ' />' : '>'
 
-    return Buffer.from(result)
+    return encoder.encode(result)
 }
 
-function getTagName (tagBuf: Buffer): string {
-    const tag = tagBuf.toString('utf8')
-    const match = tag.match(/^<\/?([a-zA-Z][-a-zA-Z0-9]*)/)
+function getTagName (tag: Uint8Array): string {
+    const tagStr = decoder.decode(tag)
+    const match = tagStr.match(/^<\/?([a-zA-Z][-a-zA-Z0-9]*)/)
     return match ? match[1].toLowerCase() : ''
 }
 
-function isSelfClosing (tagBuf: Buffer): boolean {
-    const tag = tagBuf.toString('utf8').trim()
-    return tag.endsWith('/>') || isVoidElement(getTagName(tagBuf))
+function isSelfClosing (tag: Uint8Array): boolean {
+    const tagStr = decoder.decode(tag).trim()
+    return tagStr.endsWith('/>') || isVoidElement(getTagName(tag))
 }
 
 const VOID_ELEMENTS = new Set([
@@ -129,17 +150,17 @@ function isVoidElement (tagName: string): boolean {
 }
 
 function matchesSelector (
-    tagBuf: Buffer,
+    tag: Uint8Array,
     selector: string,
-    ancestors: Buffer[]
+    ancestors: Uint8Array[]
 ): boolean {
-    const tagName = getTagName(tagBuf)
-    const attrs = parseTagAttrs(tagBuf)
+    const tagName = getTagName(tag)
+    const attrs = parseTagAttrs(tag)
 
     let html = ''
-    for (const ancestorBuf of ancestors) {
-        const name = getTagName(ancestorBuf)
-        const ancestorAttrs = parseTagAttrs(ancestorBuf)
+    for (const ancestorTag of ancestors) {
+        const name = getTagName(ancestorTag)
+        const ancestorAttrs = parseTagAttrs(ancestorTag)
         html += `<${name}`
         for (const [k, v] of Object.entries(ancestorAttrs)) {
             html += ` ${k}="${v}"`
@@ -171,28 +192,32 @@ function matchesSelector (
     }
 }
 
-class Hyperstream extends Transform {
-    private tokenize: Tokenize
-    private selectors: Array<{
+async function streamToUint8Array (stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+    const reader = stream.getReader()
+    const chunks: Uint8Array[] = []
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+    }
+    return concatUint8Arrays(chunks)
+}
+
+interface HyperstreamState {
+    selectors: Array<{
         selector: string
         value: SelectorValue
         firstOnly: boolean
         matchedOnce: boolean
     }>
+    ancestors: Uint8Array[]
+    activeMatches: MatchedElement[]
+    depth: number
+}
 
-    private ancestors: Buffer[] = []
-    private activeMatches: MatchedElement[] = []
-    private depth = 0
-    private outputQueue: Array<Buffer | Promise<Buffer>> = []
-    private flushCallback: TransformCallback | null = null
-    private inputEnded = false
-    private flushing = false
-
-    constructor (config: HyperstreamConfig = {}) {
-        super()
-        this.tokenize = new Tokenize()
-
-        this.selectors = Object.keys(config).map(key => {
+function createState (config: HyperstreamConfig): HyperstreamState {
+    return {
+        selectors: Object.keys(config).map(key => {
             const firstOnly = /:first$/.test(key)
             return {
                 selector: key.replace(/:first$/, ''),
@@ -200,316 +225,347 @@ class Hyperstream extends Transform {
                 firstOnly,
                 matchedOnce: false
             }
-        })
+        }),
+        ancestors: [],
+        activeMatches: [],
+        depth: 0
+    }
+}
 
-        this.tokenize.on('data', (token: [string, Buffer]) => {
-            this.processToken(token)
-        })
+function buildOutput (
+    openTag: Uint8Array,
+    content: Uint8Array,
+    closeTag: Uint8Array | null,
+    attrChanges: Record<string, string | null>
+): Uint8Array {
+    const modifiedTag = Object.keys(attrChanges).length > 0
+        ? rebuildTag(openTag, attrChanges)
+        : openTag
 
-        this.tokenize.on('end', () => {
-            this.inputEnded = true
-            this.tryFlush()
-        })
+    const parts = [modifiedTag, content]
+    if (closeTag) parts.push(closeTag)
+    return concatUint8Arrays(parts)
+}
+
+async function processObjectValue (
+    openTag: Uint8Array,
+    originalContent: Uint8Array,
+    closeTag: Uint8Array | null,
+    props: Record<string, PropertyValue>
+): Promise<Uint8Array> {
+    let newContent: Uint8Array | null = null
+    let pendingContent: Promise<Uint8Array> | null = null
+    const attrChanges: Record<string, string | null> = {}
+
+    for (const [prop, v] of Object.entries(props)) {
+        const lprop = prop.toLowerCase()
+
+        if (prop === '_html') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v)
+            } else {
+                newContent = toBytes(v)
+            }
+        } else if (prop === '_text') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v).then(buf =>
+                    encoder.encode(entEncode(decoder.decode(buf)))
+                )
+            } else {
+                newContent = encoder.encode(entEncode(toStr(v)))
+            }
+        } else if (lprop === '_appendhtml') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v).then(buf =>
+                    concatUint8Arrays([originalContent, buf])
+                )
+            } else {
+                newContent = concatUint8Arrays([originalContent, toBytes(v)])
+            }
+        } else if (lprop === '_prependhtml') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v).then(buf =>
+                    concatUint8Arrays([buf, originalContent])
+                )
+            } else {
+                newContent = concatUint8Arrays([toBytes(v), originalContent])
+            }
+        } else if (prop === '_append' || lprop === '_appendtext') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v).then(buf =>
+                    concatUint8Arrays([originalContent, encoder.encode(entEncode(decoder.decode(buf)))])
+                )
+            } else {
+                newContent = concatUint8Arrays([originalContent, encoder.encode(entEncode(toStr(v)))])
+            }
+        } else if (prop === '_prepend' || lprop === '_prependtext') {
+            if (isStream(v)) {
+                pendingContent = streamToUint8Array(v).then(buf =>
+                    concatUint8Arrays([encoder.encode(entEncode(decoder.decode(buf))), originalContent])
+                )
+            } else {
+                newContent = concatUint8Arrays([encoder.encode(entEncode(toStr(v))), originalContent])
+            }
+        } else {
+            if (isObj(v) && ('append' in v || 'prepend' in v)) {
+                const modifier = v as AttrModifier
+                const currentAttrs = parseTagAttrs(openTag)
+                let current = currentAttrs[prop.toLowerCase()] || ''
+                if (modifier.append) current += modifier.append
+                if (modifier.prepend) current = modifier.prepend + current
+                attrChanges[prop] = current
+            } else if (v === null || v === undefined) {
+                attrChanges[prop] = null
+            } else {
+                attrChanges[prop] = toStr(v)
+            }
+        }
     }
 
-    private queueOutput (data: Buffer | Promise<Buffer>): void {
-        if (this.activeMatches.length > 0) {
-            const parent = this.activeMatches[this.activeMatches.length - 1]
+    if (pendingContent) {
+        const buf = await pendingContent
+        return buildOutput(openTag, buf, closeTag, attrChanges)
+    } else {
+        const finalContent = newContent ?? originalContent
+        return buildOutput(openTag, finalContent, closeTag, attrChanges)
+    }
+}
+
+async function transformContent (
+    value: SelectorValue,
+    openTag: Uint8Array,
+    originalContent: Uint8Array,
+    closeTag: Uint8Array | null
+): Promise<Uint8Array> {
+    if (typeof value === 'string') {
+        return buildOutput(openTag, encoder.encode(value), closeTag, {})
+    } else if (typeof value === 'number') {
+        return buildOutput(openTag, encoder.encode(String(value)), closeTag, {})
+    } else if (value instanceof Uint8Array) {
+        return buildOutput(openTag, value, closeTag, {})
+    } else if (typeof value === 'function') {
+        const result = value(decoder.decode(originalContent))
+        return buildOutput(openTag, toBytes(result), closeTag, {})
+    } else if (isStream(value)) {
+        const buf = await streamToUint8Array(value)
+        return buildOutput(openTag, buf, closeTag, {})
+    } else if (isObj(value)) {
+        return processObjectValue(openTag, originalContent, closeTag, value as Record<string, PropertyValue>)
+    } else {
+        const parts = [openTag, originalContent]
+        if (closeTag) parts.push(closeTag)
+        return concatUint8Arrays(parts)
+    }
+}
+
+async function resolveContent (content: Array<Uint8Array | Promise<Uint8Array>>): Promise<Uint8Array> {
+    const resolved = await Promise.all(content)
+    return concatUint8Arrays(resolved)
+}
+
+async function processMatch (match: MatchedElement): Promise<Uint8Array> {
+    const { value, openTag, content, closeTag } = match
+    const hasPromises = content.some(c => c instanceof Promise)
+
+    let originalContent: Uint8Array
+    if (hasPromises) {
+        originalContent = await resolveContent(content)
+    } else {
+        originalContent = concatUint8Arrays(content as Uint8Array[])
+    }
+
+    return transformContent(value, openTag, originalContent, closeTag)
+}
+
+/**
+ * Process HTML through hyperstream asynchronously
+ */
+export async function processHyperstream (
+    input: ReadableStream<Uint8Array>,
+    config: HyperstreamConfig = {}
+): Promise<Uint8Array> {
+    const state = createState(config)
+    const outputQueue: Array<Uint8Array | Promise<Uint8Array>> = []
+
+    function queueOutput (
+        data: Uint8Array | Promise<Uint8Array>,
+        activeMatches: MatchedElement[]
+    ): void {
+        if (activeMatches.length > 0) {
+            const parent = activeMatches[activeMatches.length - 1]
             parent.content.push(data)
         } else {
-            this.outputQueue.push(data)
-            if (!this.flushing) {
-                this.tryFlush()
-            }
+            outputQueue.push(data)
         }
     }
 
-    private async tryFlush (): Promise<void> {
-        if (this.flushing) return
-        this.flushing = true
+    function handleOpenTag (tag: Uint8Array): void {
+        const selfClosing = isSelfClosing(tag)
 
-        try {
-            while (this.outputQueue.length > 0) {
-                const first = this.outputQueue[0]
-                let buf: Buffer
-                if (first instanceof Promise) {
-                    buf = await first
-                } else {
-                    buf = first
-                }
-                this.outputQueue.shift()
-                this.push(buf)
-            }
-
-            if (this.inputEnded && this.outputQueue.length === 0 && this.flushCallback) {
-                const cb = this.flushCallback
-                this.flushCallback = null
-                cb()
-            }
-        } finally {
-            this.flushing = false
-        }
-    }
-
-    private processToken (token: [string, Buffer]): void {
-        const [type, data] = token
-
-        if (type === 'open') {
-            this.handleOpenTag(data)
-        } else if (type === 'close') {
-            this.handleCloseTag(data)
-        } else if (type === 'text') {
-            this.queueOutput(data)
-        }
-    }
-
-    private handleOpenTag (tagBuf: Buffer): void {
-        const selfClosing = isSelfClosing(tagBuf)
-
-        for (const sel of this.selectors) {
+        for (const sel of state.selectors) {
             if (sel.value === null) continue
             if (sel.firstOnly && sel.matchedOnce) continue
 
-            if (matchesSelector(tagBuf, sel.selector, this.ancestors)) {
+            if (matchesSelector(tag, sel.selector, state.ancestors)) {
                 sel.matchedOnce = true
 
                 const match: MatchedElement = {
                     selector: sel.selector,
                     value: sel.value,
-                    depth: this.depth,
-                    openTag: tagBuf,
+                    depth: state.depth,
+                    openTag: tag,
                     content: [],
                     closeTag: null,
                     firstOnly: sel.firstOnly
                 }
 
                 if (selfClosing) {
-                    this.processMatch(match)
+                    queueOutput(processMatch(match), state.activeMatches)
                 } else {
-                    this.activeMatches.push(match)
-                    this.ancestors.push(tagBuf)
-                    this.depth++
+                    state.activeMatches.push(match)
+                    state.ancestors.push(tag)
+                    state.depth++
                 }
                 return
             }
         }
 
-        this.queueOutput(tagBuf)
+        queueOutput(tag, state.activeMatches)
 
         if (!selfClosing) {
-            this.ancestors.push(tagBuf)
-            this.depth++
+            state.ancestors.push(tag)
+            state.depth++
         }
     }
 
-    private handleCloseTag (tagBuf: Buffer): void {
-        this.depth--
-        if (this.ancestors.length > 0) {
-            this.ancestors.pop()
+    function handleCloseTag (tag: Uint8Array): void {
+        state.depth--
+        if (state.ancestors.length > 0) {
+            state.ancestors.pop()
         }
 
-        if (this.activeMatches.length > 0) {
-            const match = this.activeMatches[this.activeMatches.length - 1]
-            if (this.depth === match.depth) {
-                match.closeTag = tagBuf
-                this.activeMatches.pop()
-                this.processMatch(match)
+        if (state.activeMatches.length > 0) {
+            const match = state.activeMatches[state.activeMatches.length - 1]
+            if (state.depth === match.depth) {
+                match.closeTag = tag
+                state.activeMatches.pop()
+                queueOutput(processMatch(match), state.activeMatches)
                 return
             }
         }
 
-        this.queueOutput(tagBuf)
+        queueOutput(tag, state.activeMatches)
     }
 
-    private async resolveContent (content: Array<Buffer | Promise<Buffer>>): Promise<Buffer> {
-        const resolved = await Promise.all(content)
-        return Buffer.concat(resolved)
+    function processToken (token: Token): void {
+        const [type, data] = token
+        if (type === 'open') {
+            handleOpenTag(data)
+        } else if (type === 'close') {
+            handleCloseTag(data)
+        } else if (type === 'text') {
+            queueOutput(data, state.activeMatches)
+        }
     }
 
-    private processMatch (match: MatchedElement): void {
-        const { value, openTag, content, closeTag } = match
+    // Process the input through tokenizer
+    const tokenizer = createTokenizer()
+    const tokenStream = input.pipeThrough(tokenizer)
+    const reader = tokenStream.getReader()
 
-        // Check if content has any promises
-        const hasPromises = content.some(c => c instanceof Promise)
+    // Read and process all tokens
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        processToken(value)
+    }
 
-        if (hasPromises) {
-            // Need to resolve content asynchronously
-            const resultPromise = this.resolveContent(content).then(originalContent => {
-                return this.transformContent(value, openTag, originalContent, closeTag)
+    // Resolve all queued output
+    const resolvedOutput: Uint8Array[] = []
+    for (const item of outputQueue) {
+        if (item instanceof Promise) {
+            resolvedOutput.push(await item)
+        } else {
+            resolvedOutput.push(item)
+        }
+    }
+
+    return concatUint8Arrays(resolvedOutput)
+}
+
+/**
+ * Create a hyperstream TransformStream
+ */
+export function createHyperstream (config: HyperstreamConfig = {}): TransformStream<Uint8Array, Uint8Array> {
+    const chunks: Uint8Array[] = []
+
+    return new TransformStream<Uint8Array, Uint8Array>({
+        transform (chunk) {
+            // Buffer all input chunks
+            chunks.push(chunk)
+        },
+        async flush (controller) {
+            // Process all buffered input at once
+            const input = new ReadableStream({
+                start (ctrl) {
+                    for (const chunk of chunks) {
+                        ctrl.enqueue(chunk)
+                    }
+                    ctrl.close()
+                }
             })
-            this.queueOutput(resultPromise)
-        } else {
-            // All content is resolved
-            const originalContent = Buffer.concat(content as Buffer[])
-            const result = this.transformContent(value, openTag, originalContent, closeTag)
-            if (result instanceof Promise) {
-                this.queueOutput(result)
-            } else {
-                this.queueOutput(result)
-            }
+
+            const result = await processHyperstream(input, config)
+            controller.enqueue(result)
         }
-    }
+    })
+}
 
-    private transformContent (
-        value: SelectorValue,
-        openTag: Buffer,
-        originalContent: Buffer,
-        closeTag: Buffer | null
-    ): Buffer | Promise<Buffer> {
-        if (typeof value === 'string') {
-            return this.buildOutput(openTag, Buffer.from(value), closeTag, {})
-        } else if (typeof value === 'number') {
-            return this.buildOutput(openTag, Buffer.from(String(value)), closeTag, {})
-        } else if (Buffer.isBuffer(value)) {
-            return this.buildOutput(openTag, value, closeTag, {})
-        } else if (typeof value === 'function') {
-            const result = value(originalContent.toString('utf8'))
-            return this.buildOutput(openTag, Buffer.from(toStr(result)), closeTag, {})
-        } else if (isStream(value)) {
-            return this.streamToBuffer(value).then(buf => {
-                return this.buildOutput(openTag, buf, closeTag, {})
-            })
-        } else if (isObj(value)) {
-            return this.processObjectValueSync(openTag, originalContent, closeTag, value as Record<string, PropertyValue>)
-        } else {
-            const parts = [openTag, originalContent]
-            if (closeTag) parts.push(closeTag)
-            return Buffer.concat(parts)
-        }
-    }
+/**
+ * Hyperstream class - provides a TransformStream interface
+ */
+export class Hyperstream {
+    readonly transform: TransformStream<Uint8Array, Uint8Array>
+    readonly readable: ReadableStream<Uint8Array>
+    readonly writable: WritableStream<Uint8Array>
 
-    private processObjectValueSync (
-        openTag: Buffer,
-        originalContent: Buffer,
-        closeTag: Buffer | null,
-        props: Record<string, PropertyValue>
-    ): Buffer | Promise<Buffer> {
-        let newContent: Buffer | null = null
-        let pendingContent: Promise<Buffer> | null = null
-        const attrChanges: Record<string, string | null> = {}
-
-        for (const [prop, v] of Object.entries(props)) {
-            const lprop = prop.toLowerCase()
-
-            if (prop === '_html') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v)
-                } else {
-                    newContent = Buffer.from(toStr(v))
-                }
-            } else if (prop === '_text') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v).then(buf =>
-                        Buffer.from(entEncode(buf.toString('utf8')))
-                    )
-                } else {
-                    newContent = Buffer.from(entEncode(toStr(v)))
-                }
-            } else if (lprop === '_appendhtml') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v).then(buf =>
-                        Buffer.concat([originalContent, buf])
-                    )
-                } else {
-                    newContent = Buffer.concat([originalContent, Buffer.from(toStr(v))])
-                }
-            } else if (lprop === '_prependhtml') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v).then(buf =>
-                        Buffer.concat([buf, originalContent])
-                    )
-                } else {
-                    newContent = Buffer.concat([Buffer.from(toStr(v)), originalContent])
-                }
-            } else if (prop === '_append' || lprop === '_appendtext') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v).then(buf =>
-                        Buffer.concat([originalContent, Buffer.from(entEncode(buf.toString('utf8')))])
-                    )
-                } else {
-                    newContent = Buffer.concat([originalContent, Buffer.from(entEncode(toStr(v)))])
-                }
-            } else if (prop === '_prepend' || lprop === '_prependtext') {
-                if (isStream(v)) {
-                    pendingContent = this.streamToBuffer(v).then(buf =>
-                        Buffer.concat([Buffer.from(entEncode(buf.toString('utf8'))), originalContent])
-                    )
-                } else {
-                    newContent = Buffer.concat([Buffer.from(entEncode(toStr(v))), originalContent])
-                }
-            } else {
-                if (isObj(v) && ('append' in v || 'prepend' in v)) {
-                    const modifier = v as AttrModifier
-                    const currentAttrs = parseTagAttrs(openTag)
-                    let current = currentAttrs[prop.toLowerCase()] || ''
-                    if (modifier.append) current += modifier.append
-                    if (modifier.prepend) current = modifier.prepend + current
-                    attrChanges[prop] = current
-                } else if (v === null || v === undefined) {
-                    attrChanges[prop] = null
-                } else {
-                    attrChanges[prop] = toStr(v)
-                }
-            }
-        }
-
-        if (pendingContent) {
-            return pendingContent.then(buf => {
-                return this.buildOutput(openTag, buf, closeTag, attrChanges)
-            })
-        } else {
-            const finalContent = newContent ?? originalContent
-            return this.buildOutput(openTag, finalContent, closeTag, attrChanges)
-        }
-    }
-
-    private streamToBuffer (stream: StreamValue): Promise<Buffer> {
-        return new Promise((resolve) => {
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) =>
-                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-            )
-            stream.on('end', () => resolve(Buffer.concat(chunks)))
-        })
-    }
-
-    private buildOutput (
-        openTag: Buffer,
-        content: Buffer,
-        closeTag: Buffer | null,
-        attrChanges: Record<string, string | null>
-    ): Buffer {
-        const modifiedTag = Object.keys(attrChanges).length > 0
-            ? rebuildTag(openTag, attrChanges)
-            : openTag
-
-        const parts = [modifiedTag, content]
-        if (closeTag) parts.push(closeTag)
-        return Buffer.concat(parts)
-    }
-
-    override _transform (
-        chunk: Buffer,
-        encoding: BufferEncoding,
-        callback: TransformCallback
-    ): void {
-        this.tokenize.write(chunk, encoding, callback)
-    }
-
-    override _flush (callback: TransformCallback): void {
-        this.tokenize.end()
-
-        if (this.outputQueue.length === 0) {
-            callback()
-        } else {
-            this.flushCallback = callback
-            this.tryFlush()
-        }
+    constructor (config: HyperstreamConfig = {}) {
+        this.transform = createHyperstream(config)
+        this.readable = this.transform.readable
+        this.writable = this.transform.writable
     }
 }
 
+/**
+ * Create a hyperstream from a string (convenience function)
+ */
+export async function hyperstreamFromString (
+    html: string,
+    config: HyperstreamConfig = {}
+): Promise<string> {
+    const hs = createHyperstream(config)
+    const inputBytes = encoder.encode(html)
+
+    const reader = new ReadableStream({
+        start (controller) {
+            controller.enqueue(inputBytes)
+            controller.close()
+        }
+    }).pipeThrough(hs).getReader()
+
+    const chunks: Uint8Array[] = []
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+    }
+
+    return decoder.decode(concatUint8Arrays(chunks))
+}
+
+/**
+ * Default export - create a hyperstream instance
+ */
 export default function hyperstream (config?: HyperstreamConfig): Hyperstream {
     return new Hyperstream(config)
 }
-
-export { Hyperstream }

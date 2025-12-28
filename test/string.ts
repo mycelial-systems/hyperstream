@@ -1,30 +1,21 @@
 import { test } from '@substrate-system/tapzero'
-import through from 'through'
 import hyperstream from '../src/index.js'
-import fs from 'node:fs'
+import fs from 'fs'
 import { fileURLToPath } from 'node:url'
-import path from 'node:path'
+import path from 'path'
+import { fileToStream, processFile } from './helpers.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(__dirname + '/string/expected.html', 'utf8')
 
-test('glue html streams from disk', function (t) {
-    t.plan(1)
-
+test('glue html streams from disk', async function (t) {
     const hs = hyperstream({
-        '#a': fs.createReadStream(__dirname + '/string/a.html'),
-        '#b': fs.createReadStream(__dirname + '/string/b.html'),
+        '#a': fileToStream(__dirname + '/string/a.html'),
+        '#b': fileToStream(__dirname + '/string/b.html'),
         'head title': 'beep boop',
         '#c span': function (html) { return html.toUpperCase() }
     })
-    const rs = fs.createReadStream(__dirname + '/string/index.html')
 
-    let data = ''
-    rs.pipe(hs).pipe(through(write, end))
-
-    function write (buf) { data += buf }
-
-    function end () {
-        t.equal(data, expected)
-    }
+    const result = await processFile(hs, __dirname + '/string/index.html')
+    t.equal(result, expected)
 })

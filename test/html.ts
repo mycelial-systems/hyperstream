@@ -1,37 +1,23 @@
 import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
-import concat from 'concat-stream'
-import through from 'through2'
+import { processHtml, stringToStream } from './helpers.js'
 
-test('string _html', function (t) {
-    t.plan(1)
-
+test('string _html', async function (t) {
     const hs = hyperstream({
         '.row': { _html: '<b>beep boop</b>' }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="row"><b>beep boop</b></div>'
-        )
-    }))
-    hs.end('<div class="row"></div>')
+
+    const result = await processHtml(hs, '<div class="row"></div>')
+    t.equal(result, '<div class="row"><b>beep boop</b></div>')
 })
 
-test('stream _html', function (t) {
-    t.plan(1)
-    const stream = through()
-    stream.push('<b>beep boop</b>')
-    stream.push(null)
+test('stream _html', async function (t) {
+    const stream = stringToStream('<b>beep boop</b>')
 
     const hs = hyperstream({
         '.row': { _html: stream }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="row"><b>beep boop</b></div>'
-        )
-    }))
-    hs.end('<div class="row"></div>')
+
+    const result = await processHtml(hs, '<div class="row"></div>')
+    t.equal(result, '<div class="row"><b>beep boop</b></div>')
 })

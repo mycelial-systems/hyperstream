@@ -1,79 +1,48 @@
 import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
-import concat from 'concat-stream'
+import { processHtml } from './helpers.js'
 
-test('append property', function (t) {
-    t.plan(1)
-
+test('append property', async function (t) {
     const hs = hyperstream({
         '.row': { class: { append: ' post' } }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="row post">so </div>'
-        )
-    }))
-    hs.end('<div class="row">so </div>')
+
+    const result = await processHtml(hs, '<div class="row">so </div>')
+    t.equal(result, '<div class="row post">so </div>')
 })
 
-test('prepend property', function (t) {
-    t.plan(1)
-
+test('prepend property', async function (t) {
     const hs = hyperstream({
         '.row': { class: { prepend: 'pre ' } }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="pre row">so </div>'
-        )
-    }))
-    hs.end('<div class="row">so </div>')
+
+    const result = await processHtml(hs, '<div class="row">so </div>')
+    t.equal(result, '<div class="pre row">so </div>')
 })
 
-test('append and prepend property', function (t) {
-    t.plan(1)
-
+test('append and prepend property', async function (t) {
     const hs = hyperstream({
         '.row': { class: { prepend: 'pre ', append: ' post' } }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="pre row post">so </div>'
-        )
-    }))
-    hs.end('<div class="row">so </div>')
+
+    const result = await processHtml(hs, '<div class="row">so </div>')
+    t.equal(result, '<div class="pre row post">so </div>')
 })
 
-test('append and prepend empty property', function (t) {
-    t.plan(1)
-
+test('append and prepend empty property', async function (t) {
     const hs = hyperstream({
         div: { class: { prepend: 'pre ', append: ' post' } }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="pre  post">so </div>'
-        )
-    }))
-    hs.end('<div>so </div>')
+
+    const result = await processHtml(hs, '<div>so </div>')
+    t.equal(result, '<div class="pre  post">so </div>')
 })
 
-test('append property with empty string', function (t) {
-    t.plan(1)
-
+test('append property with empty string', async function (t) {
     const hs = hyperstream({
         div: { class: { append: '' } }
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="row">so </div>'
-        )
-    }))
-    hs.end('<div class="row">so </div>')
-})
 
+    const result = await processHtml(hs, '<div class="row">so </div>')
+    t.equal(result, '<div class="row">so </div>')
+})

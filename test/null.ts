@@ -1,18 +1,12 @@
 import hyperstream from '../src/index.js'
 import { test } from '@substrate-system/tapzero'
-import concat from 'concat-stream'
+import { processHtml } from './helpers.js'
 
-test('null value', function (t) {
-    t.plan(1)
-
+test('null value', async function (t) {
     const hs = hyperstream({
         '.row': null
     })
-    hs.pipe(concat(function (body) {
-        t.equal(
-            body.toString('utf8'),
-            '<div class="row"></div>'
-        )
-    }))
-    hs.end('<div class="row"></div>')
+
+    const result = await processHtml(hs, '<div class="row"></div>')
+    t.equal(result, '<div class="row"></div>')
 })

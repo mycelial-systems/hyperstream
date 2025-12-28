@@ -1,41 +1,19 @@
 import { test } from '@substrate-system/tapzero'
 import hyperstream from '../src/index.js'
-import Stream from 'stream'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
+import { createAzStream, fileToStream, processFile } from './helpers.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const expected = fs.readFileSync(path.join(__dirname, 'az', 'expected.html'), 'utf8')
 
-test('fs stream and a slow stream', function (t) {
-    t.plan(1)
-
+test('fs stream and a slow stream', async function (t) {
     const hs = hyperstream({
         '#a': createAzStream(),
-        '#b': fs.createReadStream(path.join(__dirname, 'az', 'b.html'))
-    })
-    let data = ''
-    hs.on('data', function (buf) { data += buf })
-    hs.on('end', function () {
-        t.equal(data, expected)
+        '#b': fileToStream(path.join(__dirname, 'az', 'b.html'))
     })
 
-    const rs = fs.createReadStream(path.join(__dirname, 'az', 'index.html'))
-    rs.pipe(hs)
+    const result = await processFile(hs, path.join(__dirname, 'az', 'index.html'))
+    t.equal(result, expected)
 })
-
-function createAzStream () {
-    const rs = new Stream()
-    // @ts-expect-error: Stream.readable is not typed in node's Stream
-    rs.readable = true
-    let ix = 0
-    const iv = setInterval(function () {
-        rs.emit('data', String.fromCharCode(97 + ix))
-        if (++ix === 26) {
-            clearInterval(iv)
-            rs.emit('end')
-        }
-    }, 25)
-    return rs
-}
