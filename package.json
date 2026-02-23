@@ -29,18 +29,15 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@substrate-system/button": "^0.0.35",
-    "@substrate-system/stream": "^0.0.5",
-    "concat-stream": "^2.0.0",
+    "@substrate-system/stream": "^0.0.6",
     "css-select": "^6.0.0",
     "domhandler": "^5.0.3",
-    "htmlparser2": "^10.0.0",
-    "stream-splicer": "^2.0.1",
-    "through": "^2.3.8",
-    "through2": "^4.0.2",
-    "void-elements": "^3.1.0"
+    "parse5": "^8.0.0",
+    "parse5-htmlparser2-tree-adapter": "^8.0.0"
   },
   "devDependencies": {
+    "@substrate-system/button": "^0.0.35",
+    "@substrate-system/css-normalize": "^0.0.13",
     "@substrate-system/debug": "^0.9.32",
     "@substrate-system/tapout": "^0.0.30",
     "@substrate-system/tapzero": "^0.10.16",

@@ -1,14 +1,10 @@
+@import url("@substrate-system/css-normalize");
 @import url("@substrate-system/button/css");
-
-* {
-    box-sizing: border-box;
-}
 
 body {
     margin: 0;
     font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
     background: #f6f7fb;
-    color: #10131a;
 }
 
 .page {
@@ -41,20 +37,18 @@ h1, h2 {
     align-content: start;
 }
 
-label {
-    font-size: 0.9rem;
-    color: #4b5568;
-}
-
 .editor {
     width: 100%;
     min-height: 220px;
     border: 1px solid #c9d0dc;
     padding: 0.75rem;
     background: #fcfdff;
-    color: #10131a;
     font: inherit;
     resize: vertical;
+}
+
+textarea.editor {
+    font-family: 'Courier New', Courier, monospace;
 }
 
 .controls {

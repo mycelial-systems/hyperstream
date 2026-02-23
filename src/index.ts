@@ -1,6 +1,7 @@
 import { selectAll } from 'css-select'
-import { parseDocument } from 'htmlparser2'
+import { parse } from 'parse5'
 import type { Element } from 'domhandler'
+import { adapter as htmlparser2TreeAdapter } from 'parse5-htmlparser2-tree-adapter'
 import { S } from '@substrate-system/stream'
 import { createTokenizer, type Token } from './tokenize.js'
 import { encode as entEncode } from './ent/index.js'
@@ -181,7 +182,7 @@ function matchesSelector (
     }
 
     try {
-        const doc = parseDocument(html)
+        const doc = parse(html, { treeAdapter: htmlparser2TreeAdapter })
         const elements = selectAll(selector, doc) as unknown as Element[]
         if (elements.length > 0) {
             const last = elements[elements.length - 1]
@@ -193,7 +194,9 @@ function matchesSelector (
     }
 }
 
-async function streamToUint8Array (stream:ReadableStream<Uint8Array>):Promise<Uint8Array> {
+async function streamToUint8Array (
+    stream:ReadableStream<Uint8Array>
+):Promise<Uint8Array> {
     const chunks = await S(stream).toArray()
     return concatUint8Arrays(chunks)
 }

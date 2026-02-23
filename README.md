@@ -57,35 +57,17 @@ npm start
 
 Take some template HTML, and transform it using CSS selectors.
 
-### Full Stream Example
-
 Stream a template file through `hyperstream`, inject stream values by selector,
 then stream the transformed output into `result.html`:
 
 ```ts
 import hyperstream from '@substrate-system/hyperstream'
 import { S } from '@substrate-system/stream'
+import { toFileSink } from '@substrate-system/stream/node'
 import { open, type FileHandle } from 'node:fs/promises'
 
 function toByteStream (fh:FileHandle):ReadableStream<Uint8Array> {
     return fh.readableWebStream({ type: 'bytes' }) as ReadableStream<Uint8Array>
-}
-
-function toFileSink (fh:FileHandle):WritableStream<Uint8Array> {
-    let position = 0
-    return new WritableStream<Uint8Array>({
-        async write (chunk) {
-            const { bytesWritten } = await fh.write(chunk, 0, chunk.byteLength, position)
-            position += bytesWritten
-        },
-        async close () {
-            await fh.truncate(position)
-            await fh.close()
-        },
-        async abort () {
-            await fh.close()
-        }
-    })
 }
 
 async function run ():Promise<void> {
