@@ -5,6 +5,7 @@ src/*.js
 test/*.js*
 test/index.d.ts*
 dist
+public
 .env
 
 .cursor

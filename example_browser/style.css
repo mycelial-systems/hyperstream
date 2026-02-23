@@ -1,0 +1,40 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", monospace;
+    background: #f6f7fb;
+    color: #10131a;
+}
+
+.page {
+    width: min(960px, 100% - 2rem);
+    margin: 2rem auto;
+    display: grid;
+    gap: 1rem;
+}
+
+h1, h2 {
+    margin: 0 0 0.5rem;
+}
+
+section {
+    background: white;
+    border: 1px solid #d9dce4;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.live {
+    border: 1px dashed #c1c7d3;
+    border-radius: 6px;
+    padding: 0.75rem;
+}

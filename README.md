@@ -20,6 +20,7 @@ for compatibility with browsers, Cloudflare Workers, and Deno.
 <!-- toc -->
 
 - [Install](#install)
+- [Browser Example App](#browser-example-app)
 - [Example](#example)
   * [Strings](#strings)
   * [TransformStream API](#transformstream-api)
@@ -41,6 +42,21 @@ for compatibility with browsers, Cloudflare Workers, and Deno.
 
 ```sh
 npm i -S @substrate-system/hyperstream
+```
+
+## Browser Example App
+
+A browser demo is in `/example_browser` and is built with Vite.
+
+```sh
+npm install
+npm run start
+```
+
+Build static output for GitHub Pages:
+
+```sh
+npm run build-example
 ```
 
 ## Example
