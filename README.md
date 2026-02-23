@@ -22,6 +22,7 @@ for compatibility with browsers, Cloudflare Workers, and Deno.
 - [Install](#install)
 - [Browser Example App](#browser-example-app)
 - [Example](#example)
+  * [Full Stream Example](#full-stream-example)
   * [Strings](#strings)
   * [TransformStream API](#transformstream-api)
   * [Streams](#streams)
@@ -46,22 +47,75 @@ npm i -S @substrate-system/hyperstream
 
 ## Browser Example App
 
-A browser demo is in `/example_browser` and is built with Vite.
+A browser demo is in [`/example_browser`](./example_browser/).
 
 ```sh
-npm install
-npm run start
-```
-
-Build static output for GitHub Pages:
-
-```sh
-npm run build-example
+npm start
 ```
 
 ## Example
 
 Take some template HTML, and transform it using CSS selectors.
+
+Stream a template file through `hyperstream`, inject stream values by selector,
+then stream the transformed output into `result.html`:
+
+```ts
+import hyperstream from '@substrate-system/hyperstream'
+import { S } from '@substrate-system/stream'
+import { open, type FileHandle } from 'node:fs/promises'
+
+function toByteStream (fh:FileHandle):ReadableStream<Uint8Array> {
+    return fh.readableWebStream({ type: 'bytes' }) as ReadableStream<Uint8Array>
+}
+
+function toFileSink (fh:FileHandle):WritableStream<Uint8Array> {
+    let position = 0
+    return new WritableStream<Uint8Array>({
+        async write (chunk) {
+            const { bytesWritten } = await fh.write(chunk, 0, chunk.byteLength, position)
+            position += bytesWritten
+        },
+        async close () {
+            await fh.truncate(position)
+            await fh.close()
+        },
+        async abort () {
+            await fh.close()
+        }
+    })
+}
+
+async function run ():Promise<void> {
+    const template = await open('./template.html', 'r')
+    const nav = await open('./partials/nav.html', 'r')
+    const footer = await open('./partials/footer.html', 'r')
+    const result = await open('./result.html', 'w')
+
+    try {
+        const hs = hyperstream({
+            '#main-nav': toByteStream(nav),
+            '#main-footer': toByteStream(footer),
+            '#build-time': S.from([
+                new TextEncoder().encode(new Date().toISOString())
+            ]).toStream()
+        })
+
+        await toByteStream(template)
+            .pipeThrough(hs.transform)
+            .pipeTo(toFileSink(result))
+    } finally {
+        await Promise.allSettled([
+            template.close(),
+            nav.close(),
+            footer.close(),
+            result.close()
+        ])
+    }
+}
+
+await run()
+```
 
 ### Strings
 
