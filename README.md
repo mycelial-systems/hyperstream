@@ -13,7 +13,7 @@ Use CSS selectors & HTML as a template language.
 A re-implementation of the classic
 [@substack module](https://www.npmjs.com/package/hyperstream), using
 [Web Streams](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API)
-for compatibility with browsers, Cloudflare Workers, Deno, and other runtimes.
+for compatibility with browsers, Cloudflare Workers, and Deno.
 
 <details><summary><h2>Contents</h2></summary>
 
