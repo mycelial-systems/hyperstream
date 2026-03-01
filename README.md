@@ -30,8 +30,8 @@ for compatibility with browsers, Cloudflare Workers, and Deno.
 - [API](#api)
   * [`hyperstream(config)`](#hyperstreamconfig)
   * [`fromString(html, config)`](#fromstringhtml-config)
-  * [`createHyperstream(config)`](#createhyperstreamconfig)
-  * [`processHyperstream(input, config)`](#processhyperstreaminput-config)
+  * [`transform(config)`](#transformconfig)
+  * [`toBuffer(input, config)`](#tobufferinput-config)
 - [Configuration](#configuration)
 
 <!-- tocstop -->
@@ -205,7 +205,11 @@ console.log(result)
 
 Output:
 ```html
-<ul class="list"><li>First</li><li>New item</li></ul><span class="greeting">Hello, World</span>
+<ul class="list">
+    <li>First</li>
+    <li>New item</li>
+</ul>
+<span class="greeting">Hello, World</span>
 ```
 
 ### Streams
@@ -295,30 +299,69 @@ Output:
 
 ## API
 
-### `hyperstream(config)`
+### `hyperstream (config)`
 
-Create a `Hyperstream` instance with the given configuration.
+Create a `Hyperstream` instance with the given config.
 
 Returns an object with:
-- `transform`: A `TransformStream<Uint8Array, Uint8Array>` for piping
+
+- `transform`: A `TransformStream<Uint8Array|string, Uint8Array>` for piping
 - `readable`: The readable side of the transform
 - `writable`: The writable side of the transform
 
-### `fromString(html, config)`
+```ts
+import hyperstream from '@substrate-system/hyperstream'
+
+const hs = hyperstream({ '#title': 'Hello World' })
+
+await someReadableStream
+    .pipeThrough(hs.transform)
+    .pipeTo(destination)
+```
+
+### `fromString (html, config)`
 
 Convenience function to process HTML from a string.
 
 Returns a `Promise<string>` with the processed HTML.
 
-### `createHyperstream(config)`
+```ts
+import { fromString } from '@substrate-system/hyperstream'
 
-Create a raw `TransformStream<Uint8Array, Uint8Array>`.
+const result = await fromString('<h1 id="title"></h1>', {
+    '#title': 'Hello World'
+})
+// => '<h1 id="title">Hello World</h1>'
+```
 
-### `processHyperstream(input, config)`
+### `transform (config)`
 
-Process a `ReadableStream<Uint8Array>` and return a `Promise<Uint8Array>`.
+Create a raw `TransformStream<Uint8Array|string, Uint8Array>`.
 
-## Configuration
+```ts
+import { transform } from '@substrate-system/hyperstream'
+
+const ts = transform({ '#title': 'Hello World' })
+
+const result = await someReadableStream
+    .pipeThrough(ts)
+    .pipeTo(destination)
+```
+
+### `toBuffer (input, config)`
+
+Process a `ReadableStream<Uint8Array|string>` and return a `Promise<Uint8Array>`.
+
+```ts
+import { toBuffer } from '@substrate-system/hyperstream'
+import { S } from '@substrate-system/stream'
+
+const input = S.from(['<h1 id="title"></h1>']).toStream()
+const result = await toBuffer(input, { '#title': 'Hello World' })
+// => Uint8Array of '<h1 id="title">Hello World</h1>'
+```
+
+## Config
 
 The config object maps CSS selectors to values:
 
